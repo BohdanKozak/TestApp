@@ -1,129 +1,116 @@
-// server.js
 const express = require('express');
 const mongoose = require('mongoose');
 const axios = require('axios');
-const path = require('path');
+const cors = require('cors');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- CONFIG & DB ---
-// Підключення до MongoDB (локально)
-mongoose.connect('mongodb://localhost:27017/seismic_vanilla')
-    .then(() => console.log('✅ MongoDB Connected'))
-    .catch(err => console.warn('⚠️ MongoDB Error (Using fallback mode without DB cache):', err.message));
+app.use(express.json());
+app.use(cors());
+app.use(express.static('public'));
 
-// Схема даних (NoSQL)
+// --- DB CONNECTION (Optional) ---
+mongoose.connect('mongodb://localhost:27017/seismic_risk_final')
+    .then(() => console.log('✅ MongoDB Connected'))
+    .catch(() => console.log('⚠️ Running in Memory Mode (No DB)'));
+
+// --- SCHEMA ---
 const QuakeSchema = new mongoose.Schema({
     usgsId: { type: String, unique: true },
     mag: Number,
     place: String,
     time: Number,
     depth: Number,
-    coordinates: [Number] // [lon, lat]
+    coordinates: [Number], // [lon, lat]
+    casualties: { type: Number, default: 0 },
+    isUserReported: { type: Boolean, default: false }
 });
 const Quake = mongoose.model('Quake', QuakeSchema);
 
-// --- RISK ENGINE (Логіка аналізу) ---
-function calculateRisk(quake, userLat, userLon) {
-    // Якщо координати користувача не передані — ризик 0
-    if (!userLat || !userLon) return { score: 0, level: 'N/A', distance: 0 };
+// Fallback storage
+let memoryQuakes = [];
 
-    const R = 6371; // Радіус Землі
-    const dLat = (userLat - quake.coordinates[1]) * Math.PI / 180;
-    const dLon = (userLon - quake.coordinates[0]) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(quake.coordinates[1] * Math.PI / 180) * Math.cos(userLat * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    const distanceKm = R * c;
+// --- API ---
 
-    // ФОРМУЛА РИЗИКУ
-    // 1. Магнітуда: експоненційний вплив.
-    // 2. Глибина і Відстань: зменшують вплив.
-    const intensity = Math.pow(10, quake.mag - 4.5); // Базова інтенсивність
-    const attenuation = (distanceKm / 10) + (quake.depth / 5) + 1; // Затухання
-    
-    let score = (intensity / attenuation) * 100;
-    if (score > 100) score = 100;
-    if (score < 0) score = 0;
-
-    let level = 'Low';
-    if (score > 30) level = 'Medium';
-    if (score > 70) level = 'High';
-
-    return {
-        score: Math.round(score),
-        distance: Math.round(distanceKm),
-        level
-    };
-}
-
-// --- DATA INGESTION ---
-async function fetchUSGSData() {
-    try {
-        const res = await axios.get('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson');
-        const operations = res.data.features.map(f => ({
-            updateOne: {
-                filter: { usgsId: f.id },
-                update: {
-                    usgsId: f.id,
-                    mag: f.properties.mag,
-                    place: f.properties.place,
-                    time: f.properties.time,
-                    depth: f.geometry.coordinates[2],
-                    coordinates: [f.geometry.coordinates[0], f.geometry.coordinates[1]]
-                },
-                upsert: true
-            }
-        }));
-        
-        // Якщо база підключена - пишемо в неї
-        if (mongoose.connection.readyState === 1) {
-            await Quake.bulkWrite(operations);
-            console.log(`🔄 Synced ${operations.length} quakes to DB.`);
-        }
-        return operations.map(op => op.updateOne.update); // Повертаємо дані для fallback
-    } catch (e) {
-        console.error('API Fetch Error:', e.message);
-        return [];
-    }
-}
-
-// Оновлюємо дані кожні 5 хв
-setInterval(fetchUSGSData, 5 * 60 * 1000);
-
-// --- ROUTES ---
-
-// Головна сторінка
-app.use(express.static('public'));
-
-// API Endpoint
+// GET: Отримати всі події
 app.get('/api/quakes', async (req, res) => {
     const { lat, lon, minMag } = req.query;
+    const minM = parseFloat(minMag) || 0;
+    
     let quakes = [];
 
-    // 1. Отримуємо дані (з БД або напряму, якщо БД лежить)
+    // 1. Fetch Local/DB Data
     if (mongoose.connection.readyState === 1) {
-        quakes = await Quake.find({ mag: { $gte: minMag || 0 } }).lean();
+        quakes = await Quake.find({ mag: { $gte: minM } }).lean();
     } else {
-        quakes = await fetchUSGSData(); // Fallback: live fetch
-        if (minMag) quakes = quakes.filter(q => q.mag >= minMag);
+        // Fetch Live USGS + Memory
+        const usgs = await fetchUSGSData();
+        quakes = [...memoryQuakes, ...usgs].filter(q => q.mag >= minM);
     }
 
-    // 2. Рахуємо ризик для кожного землетрусу відносно юзера
-    const analyzed = quakes.map(q => {
-        const risk = calculateRisk(q, parseFloat(lat), parseFloat(lon));
-        return { ...q, risk };
-    });
-
-    // 3. Сортуємо: спочатку небезпечні, потім нові
-    analyzed.sort((a, b) => b.risk.score - a.risk.score || b.time - a.time);
+    // 2. Calculate Risk
+    const analyzed = quakes.map(q => ({
+        ...q,
+        risk: calculateRisk(q, parseFloat(lat), parseFloat(lon))
+    }));
 
     res.json(analyzed);
 });
 
-// Start
-fetchUSGSData().then(() => {
-    app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+// POST: Додати подію
+app.post('/api/quakes', async (req, res) => {
+    try {
+        const { mag, place, depth, lat, lng, casualties } = req.body;
+        
+        const newQuake = {
+            usgsId: 'user_' + Date.now(),
+            mag: parseFloat(mag),
+            place: place || "User Reported Event",
+            time: Date.now(),
+            depth: parseFloat(depth),
+            coordinates: [parseFloat(lng), parseFloat(lat)],
+            casualties: parseInt(casualties) || 0,
+            isUserReported: true
+        };
+
+        if (mongoose.connection.readyState === 1) {
+            await Quake.create(newQuake);
+        } else {
+            memoryQuakes.push(newQuake);
+        }
+        
+        console.log("📝 Added:", newQuake.place);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
+
+// --- HELPERS ---
+function calculateRisk(q, uLat, uLon) {
+    if (!uLat || !uLon) return { distance: 0 };
+    const R = 6371;
+    const dLat = (uLat - q.coordinates[1]) * Math.PI / 180;
+    const dLon = (uLon - q.coordinates[0]) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(q.coordinates[1]*Math.PI/180)*Math.cos(uLat*Math.PI/180)*Math.sin(dLon/2)**2;
+    return { distance: Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))) };
+}
+
+async function fetchUSGSData() {
+    try {
+        const res = await axios.get('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson');
+        return res.data.features.map(f => ({
+            usgsId: f.id,
+            mag: f.properties.mag,
+            place: f.properties.place,
+            time: f.properties.time,
+            depth: f.geometry.coordinates[2],
+            coordinates: [f.geometry.coordinates[0], f.geometry.coordinates[1]],
+            casualties: 0,
+            isUserReported: false
+        }));
+    } catch (e) { return []; }
+}
+
+app.listen(PORT, () => console.log(`🚀 Server on port ${PORT}`));
