@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Seismic Risk Monitor</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
         :root {
@@ -14,168 +13,165 @@
             --text-color: #e0e0e0;
             --accent: #4a90e2;
             --danger: #ff4444;
-            --warning: #ffbb33;
-            --safe: #00c851;
-            --sidebar-width: 350px;
+            --success: #00c851;
         }
 
-        body { margin: 0; font-family: 'Segoe UI', sans-serif; background: var(--bg-color); color: var(--text-color); display: flex; height: 100vh; overflow: hidden; }
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; background: var(--bg-color); color: var(--text-color); height: 100vh; overflow: hidden; }
         
-        /* --- SIDEBAR TRANSITIONS --- */
+        #app-container { display: flex; height: 100%; width: 100%; }
+
+        /* SIDEBAR TRANSITIONS */
         #sidebar { 
-            width: var(--sidebar-width); 
+            width: 350px; 
             background: var(--panel-color); 
             display: flex; 
             flex-direction: column; 
             border-right: 1px solid #444; 
             box-shadow: 2px 0 10px rgba(0,0,0,0.5); 
-            z-index: 1000; 
-            transition: margin-left 0.3s ease-in-out;
-            flex-shrink: 0;
+            z-index: 1000;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow-x: hidden;
+            white-space: nowrap; /* Prevent text wrapping when closing */
         }
+        
+        /* Collapsed Mode */
+        #sidebar.collapsed { width: 50px; }
+        #sidebar.collapsed .header h2 span:last-child,
+        #sidebar.collapsed .controls,
+        #sidebar.collapsed #list,
+        #sidebar.collapsed .data-info { opacity: 0; pointer-events: none; display: none; }
+        
+        #sidebar.collapsed .header { padding: 15px 0; justify-content: center; }
+        #sidebar.collapsed .menu-toggle { margin: 0; }
 
-        #sidebar.closed {
-            margin-left: calc(var(--sidebar-width) * -1);
+        .header { padding: 20px; border-bottom: 1px solid #444; background: #222; display: flex; align-items: center; min-height: 25px; }
+        .header h2 { margin: 0; font-size: 1.2rem; display: flex; align-items: center; color: #fff; }
+        
+        .menu-toggle {
+            cursor: pointer;
+            font-size: 1.5rem;
+            margin-right: 15px;
+            color: var(--accent);
+            transition: 0.2s;
         }
-
-        .header { padding: 20px; border-bottom: 1px solid #444; background: #222; display: flex; justify-content: space-between; align-items: center; }
-        .header h2 { margin: 0; font-size: 1.2rem; display: flex; align-items: center; gap: 10px; }
+        .menu-toggle:hover { color: #fff; transform: scale(1.1); }
         
         .controls { padding: 15px; background: #333; border-bottom: 1px solid #444; }
-        .control-group { margin-bottom: 10px; }
+        .control-group { margin-bottom: 15px; }
         .control-group label { display: block; font-size: 0.8rem; margin-bottom: 5px; color: #aaa; }
-        input[type="range"] { width: 100%; cursor: pointer; }
+        input[type="range"] { width: 100%; cursor: pointer; accent-color: var(--accent); }
         
-        /* Buttons */
-        .btn { width: 100%; padding: 10px; border: none; color: white; cursor: pointer; border-radius: 4px; font-weight: bold; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px; }
-        .btn-primary { background: var(--accent); }
-        .btn-primary:hover { background: #357abd; }
-        .btn-danger { background: #333; border: 1px solid var(--danger); color: var(--danger); }
-        .btn-danger:hover { background: var(--danger); color: white; }
+        /* BUTTONS */
+        .btn {
+            width: 100%; padding: 12px; border: none; color: white; cursor: pointer; border-radius: 6px; 
+            font-weight: 600; margin-bottom: 8px; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-refresh { background: var(--accent); }
+        .btn-refresh:hover { background: #357abd; transform: translateY(-1px); }
+        
+        .btn-risk { background: rgba(255, 68, 68, 0.1); border: 1px solid var(--danger); color: var(--danger); }
+        .btn-risk:hover { background: var(--danger); color: white; }
+        
+        .btn-play { background: #333; border: 1px solid #555; color: #fff; }
+        .btn-play:hover { background: #444; border-color: #777; }
+        .btn-play.playing { background: var(--success); border-color: var(--success); color: #000; }
 
+        /* LIST */
         #list { flex: 1; overflow-y: auto; padding: 10px; }
+        .quake-item { background: #3a3a3a; padding: 12px; margin-bottom: 10px; border-radius: 6px; cursor: pointer; transition: 0.2s; border-left: 5px solid transparent; }
+        .quake-item:hover { background: #444; transform: translateX(3px); }
         
-        /* List Items */
-        .quake-item { background: #3a3a3a; padding: 10px; margin-bottom: 8px; border-radius: 4px; cursor: pointer; transition: 0.2s; border-left: 4px solid transparent; }
-        .quake-item:hover { background: #444; transform: translateX(2px); }
-        .quake-item.risk-High { border-left-color: var(--danger); }
-        .quake-item.risk-Medium { border-left-color: var(--warning); }
-        .quake-item.risk-Low { border-left-color: var(--safe); }
+        .q-header { display: flex; justify-content: space-between; align-items: center; }
+        .q-meta { font-size: 0.75rem; color: #aaa; margin-top: 6px; display: flex; justify-content: space-between; }
         
-        .q-header { display: flex; justify-content: space-between; font-weight: bold; }
-        .q-meta { font-size: 0.8rem; color: #aaa; margin-top: 5px; display: flex; justify-content: space-between; }
-        .risk-badge { padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; color: #000; font-weight: bold; }
+        .data-info { padding: 8px; text-align: center; font-size: 0.7rem; color: #666; background: #222; border-top: 1px solid #444; }
 
-        /* Map */
-        #map-container { flex: 1; position: relative; height: 100%; }
-        #map { width: 100%; height: 100%; background: #000; }
+        /* MAP */
+        #map { flex: 1; height: 100%; background: #0b0b0b; }
         
-        /* Toggle Button (Floating) */
-        #toggle-btn {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            z-index: 1001; /* Above Map */
-            background: var(--panel-color);
-            color: white;
-            border: 1px solid #555;
-            padding: 10px 15px;
-            border-radius: 4px;
-            cursor: pointer;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
-            transition: left 0.3s ease-in-out;
-            display: none; /* Hidden by default, shown via JS if needed or just use the one in sidebar */
+        /* Custom Map Marker Pulse Animation */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.33); opacity: 1; }
+            80%, 100% { opacity: 0; }
+        }
+        @keyframes pulse-dot {
+            0% { transform: scale(0.8); }
+            50% { transform: scale(1); }
+            100% { transform: scale(0.8); }
         }
         
-        /* Floating Toggle visible when sidebar is closed */
-        #sidebar.closed + #map-container #toggle-btn {
-            display: block;
+        .user-marker-pin {
+            width: 20px; height: 20px; border-radius: 50%;
+            background: var(--accent);
+            position: relative;
+            box-shadow: 0 0 0 2px white;
+            animation: pulse-dot 2s infinite;
         }
-
-        /* Close btn inside sidebar */
-        .close-sidebar-btn { background: none; border: none; color: #aaa; cursor: pointer; font-size: 1.2rem; }
-        .close-sidebar-btn:hover { color: white; }
-
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #2c2c2c; }
-        ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+        .user-marker-pin::after {
+            content: ''; width: 100%; height: 100%; border-radius: 50%;
+            background: var(--accent); opacity: 0.6;
+            position: absolute; top:0; left:0;
+            animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+            transform: scale(2.5);
+        }
 
         .loader { text-align: center; padding: 20px; color: #666; }
-
-        /* 🔥 PULSE ANIMATION FOR HIGH RISK MARKERS */
-        @keyframes pulse-ring {
-            0% { transform: scale(0.5); opacity: 0; }
-            50% { opacity: 0.5; }
-            100% { transform: scale(2.5); opacity: 0; }
-        }
-        .pulse-icon { position: relative; }
-        .pulse-icon::before {
-            content: '';
-            position: absolute;
-            width: 100%; height: 100%;
-            background: rgba(255, 68, 68, 0.6);
-            border-radius: 50%;
-            z-index: -1;
-            animation: pulse-ring 2s infinite;
-        }
     </style>
 </head>
 <body>
 
-    <div id="sidebar">
-        <div class="header">
-            <h2>🌋 Seismic Risk</h2>
-            <button class="close-sidebar-btn" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
-        </div>
-        
-        <div class="controls">
-            <div class="control-group">
-                <label>Min Magnitude: <span id="magValue">2.5</span></label>
-                <input type="range" id="magInput" min="1" max="9" step="0.1" value="2.5">
+    <div id="app-container">
+        <div id="sidebar">
+            <div class="header">
+                <div class="menu-toggle" onclick="toggleSidebar()">☰</div>
+                <h2>Seismic Risk AI</h2>
             </div>
             
-            <div class="control-group">
-                <label>Your Location</label>
-                <div style="font-size: 0.8rem; color: var(--accent); display: flex; justify-content: space-between;">
-                    <span>Lat: <span id="uLat">...</span></span>
-                    <span>Lon: <span id="uLon">...</span></span>
+            <div class="controls">
+                <div class="control-group">
+                    <label>Min Magnitude: <b id="magValue" style="color:var(--accent)">2.5</b></label>
+                    <input type="range" id="magInput" min="2.5" max="8" step="0.1" value="2.5">
                 </div>
+                
+                <button class="btn btn-refresh" onclick="updateData()">
+                    <span>🔄</span> Refresh Data
+                </button>
+                
+                <button id="btnHighestRisk" class="btn btn-risk" onclick="flyToHighestRisk()">
+                    <span>⚠️</span> Highest Risk
+                </button>
+
+                <button id="btnPlay" class="btn btn-play" onclick="playHistory()">
+                    <span>▶</span> Play 24h History
+                </button>
             </div>
 
-            <button onclick="updateData()" class="btn btn-primary">
-                <i class="fa-solid fa-rotate-right"></i> Refresh Data
-            </button>
-            
-            <button onclick="findHighestRisk()" class="btn btn-danger">
-                <i class="fa-solid fa-triangle-exclamation"></i> Find Highest Risk
-            </button>
+            <div id="list">
+                <div class="loader">Initializing...</div>
+            </div>
+
+            <div class="data-info">
+                Live Data: USGS (Last 24h)
+            </div>
         </div>
 
-        <div id="list">
-            <div class="loader">Waiting for data...</div>
-        </div>
-    </div>
-
-    <div id="map-container">
-        <button id="toggle-btn" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i> Menu</button>
         <div id="map"></div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // 1. CONFIG & STATE
+        // CONFIG
         const STATE = {
-            userLat: 50.4501, 
-            userLon: 30.5234,
+            userLat: 50.45, userLon: 30.52, // Default
             minMag: 2.5,
             quakes: [],
-            isSidebarOpen: true
+            isPlaying: false
         };
 
-        // 2. INIT MAP
-        const map = L.map('map').setView([STATE.userLat, STATE.userLon], 5);
-        
+        // MAP SETUP
+        const map = L.map('map', { zoomControl: false }).setView([STATE.userLat, STATE.userLon], 3);
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '© OpenStreetMap, © CartoDB',
             maxZoom: 19
@@ -184,174 +180,196 @@
         let userMarker = null;
         let markersLayer = L.layerGroup().addTo(map);
 
-        // 3. UI FUNCTIONS
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            sidebar.classList.toggle('closed');
-            STATE.isSidebarOpen = !STATE.isSidebarOpen;
-            
-            // Wait for transition to end, then resize map to avoid grey areas
-            setTimeout(() => {
-                map.invalidateSize();
-            }, 300);
-        }
-
-        function findHighestRisk() {
-            if (STATE.quakes.length === 0) {
-                alert("No data available yet.");
-                return;
-            }
-
-            // Find max score
-            const riskiest = [...STATE.quakes].sort((a, b) => b.risk.score - a.risk.score)[0];
-
-            if (riskiest) {
-                // Fly to it
-                map.flyTo([riskiest.coordinates[1], riskiest.coordinates[0]], 8, {
-                    duration: 2
-                });
-                
-                // Open sidebar if closed so user can see details (optional, but good UX)
-                if (!STATE.isSidebarOpen) toggleSidebar();
-
-                // Highlight in list
-                // (Advanced: scroll list to item could go here)
-                
-                // Show a toast or alert
-                alert(`⚠️ HIGHEST RISK DETECTED:\n${riskiest.place}\nMagnitude: ${riskiest.mag}\nRisk Score: ${riskiest.risk.score}/100`);
-            }
-        }
-
-        // 4. GEOLOCATION
+        // GEOLOCATION
         function initGeoLocation() {
-            const listEl = document.getElementById('list');
-            if (!navigator.geolocation) {
-                updateData();
-                return;
-            }
-            listEl.innerHTML = '<div class="loader">📍 Locating you...</div>';
+            if (!navigator.geolocation) { updateData(); return; }
+            
             navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    STATE.userLat = position.coords.latitude;
-                    STATE.userLon = position.coords.longitude;
-                    document.getElementById('uLat').innerText = STATE.userLat.toFixed(2);
-                    document.getElementById('uLon').innerText = STATE.userLon.toFixed(2);
-                    map.setView([STATE.userLat, STATE.userLon], 6);
+                (pos) => {
+                    STATE.userLat = pos.coords.latitude;
+                    STATE.userLon = pos.coords.longitude;
                     updateUserMarker();
                     updateData();
+                    map.flyTo([STATE.userLat, STATE.userLon], 5, { duration: 1.5 });
                 },
-                (error) => {
-                    console.warn("Geo Error:", error);
-                    listEl.innerHTML = '<div class="loader">Using default location.</div>';
+                (err) => { 
+                    console.warn("Geo denied:", err);
                     updateUserMarker();
-                    setTimeout(updateData, 1000);
+                    updateData(); 
                 }
             );
         }
 
         function updateUserMarker() {
             if (userMarker) map.removeLayer(userMarker);
-            const userIcon = L.divIcon({
-                className: 'custom-div-icon',
-                html: "<div style='background-color:#4a90e2; width: 14px; height: 14px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px #4a90e2;'></div>",
-                iconSize: [14, 14],
-                iconAnchor: [7, 7]
+            const icon = L.divIcon({
+                className: 'custom-user-marker',
+                html: '<div class="user-marker-pin"></div>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
             });
-            userMarker = L.marker([STATE.userLat, STATE.userLon], {icon: userIcon})
-                .addTo(map).bindPopup("<b>YOU ARE HERE</b>").openPopup();
+            userMarker = L.marker([STATE.userLat, STATE.userLon], {icon: icon})
+                .addTo(map).bindPopup("Your Location");
         }
 
-        // 5. CORE LOGIC
+        // CORE DATA LOGIC
         async function updateData() {
-            const listEl = document.getElementById('list');
-            listEl.innerHTML = '<div class="loader">Fetching USGS data...</div>';
+            if (STATE.isPlaying) return; // Don't refresh while playing
             
-            try {
-                const response = await fetch(`/api/quakes?lat=${STATE.userLat}&lon=${STATE.userLon}&minMag=${STATE.minMag}`);
-                const contentType = response.headers.get("content-type");
-                if (!contentType || !contentType.includes("application/json")) throw new Error("Not JSON");
+            const listEl = document.getElementById('list');
+            const btnRisk = document.getElementById('btnHighestRisk');
+            
+            listEl.innerHTML = '<div class="loader">Fetching data...</div>';
+            btnRisk.style.opacity = 0.5;
 
-                const data = await response.json();
-                STATE.quakes = data;
-                render(data);
+            try {
+                // Fetch from Node Backend
+                const res = await fetch(`/api/quakes?lat=${STATE.userLat}&lon=${STATE.userLon}&minMag=${STATE.minMag}`);
+                if(!res.ok) throw new Error("API Error");
+                
+                const data = await res.json();
+                
+                // Sort by Magnitude for the list (Big ones first)
+                STATE.quakes = data.sort((a, b) => b.mag - a.mag);
+                
+                renderList(STATE.quakes);
+                renderMap(STATE.quakes); // Default render
+                
+                btnRisk.style.opacity = 1;
             } catch (err) {
-                console.error(err);
-                listEl.innerHTML = `<div style="padding:10px; color:#ff4444;">Error loading data.<br>Make sure server is running on port 3000.</div>`;
+                listEl.innerHTML = `<div style="color:#ff5555; padding:10px; text-align:center;">Connection Error.<br>Check Server.</div>`;
             }
         }
 
-        function render(quakes) {
-            markersLayer.clearLayers();
+        // RENDER LIST
+        function renderList(quakes) {
             const listEl = document.getElementById('list');
             listEl.innerHTML = '';
-
+            
             if(quakes.length === 0) {
-                listEl.innerHTML = '<div class="loader">No earthquakes found.</div>';
+                listEl.innerHTML = '<div class="loader">No events found.</div>';
                 return;
             }
 
             quakes.forEach(q => {
-                // List Item
-                const item = document.createElement('div');
-                item.className = `quake-item risk-${q.risk.level}`;
-                const color = getColor(q.risk.level);
-                
-                item.innerHTML = `
+                const color = getMagColor(q.mag);
+                const el = document.createElement('div');
+                el.className = 'quake-item';
+                el.style.borderLeftColor = color;
+                el.innerHTML = `
                     <div class="q-header">
-                        <span>M ${q.mag.toFixed(1)}</span>
-                        <span class="risk-badge" style="background:${color}">${q.risk.level}</span>
+                        <b style="color:${color}; font-size:1.1em">M ${q.mag.toFixed(1)}</b>
+                        <span style="font-size:0.7em; color:#888">${new Date(q.time).toLocaleTimeString()}</span>
                     </div>
-                    <div style="font-size: 0.9rem; margin: 4px 0;">${q.place}</div>
+                    <div style="font-size:0.9em; margin:4px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${q.place}</div>
                     <div class="q-meta">
-                        <span>${q.depth} km deep</span>
-                        <span>${q.risk.distance} km away</span>
+                        <span>${q.depth}km deep</span>
+                        <span>${q.risk.distance.toLocaleString()}km away</span>
                     </div>
                 `;
-                item.onclick = () => {
-                    map.flyTo([q.coordinates[1], q.coordinates[0]], 8);
-                    item.style.background = '#555';
-                    setTimeout(() => item.style.background = '', 500);
+                el.onclick = () => {
+                    map.flyTo([q.coordinates[1], q.coordinates[0]], 7);
+                    // Flash effect in list
+                    el.style.backgroundColor = '#555';
+                    setTimeout(() => el.style.backgroundColor = '', 300);
                 };
-                listEl.appendChild(item);
-
-                // Map Marker
-                const radius = (q.mag * 2) + 2;
-                
-                // Add pulsing class if High risk
-                const className = q.risk.level === 'High' ? 'pulse-icon' : '';
-
-                L.circleMarker([q.coordinates[1], q.coordinates[0]], {
-                    radius: radius,
-                    fillColor: color,
-                    color: color,
-                    weight: 1,
-                    opacity: 1,
-                    fillOpacity: 0.6,
-                    className: className // Leaflet allows custom class on SVG path (mostly) but for divIcon it's easier. 
-                                         // Note: circleMarker is SVG, simple CSS animation on SVG might vary.
-                                         // Visual pulse is better done with a separate DivIcon or CSS on the path.
-                                         // Let's keep it simple: Color is enough, but 'Find Highest Risk' is the main feature.
-                })
-                .bindPopup(`<b>${q.place}</b><br>Mag: ${q.mag}<br>Risk: <b>${q.risk.score}</b>`)
-                .addTo(markersLayer);
+                listEl.appendChild(el);
             });
         }
 
-        function getColor(level) {
-            switch(level) {
-                case 'High': return '#ff4444';
-                case 'Medium': return '#ffbb33';
-                default: return '#00c851';
+        // RENDER MAP (Static)
+        function renderMap(quakes) {
+            markersLayer.clearLayers();
+            quakes.forEach(q => addMarkerToMap(q));
+        }
+
+        function addMarkerToMap(q) {
+            const color = getMagColor(q.mag);
+            const radius = Math.pow(q.mag, 2) / 1.5 + 3; // Exponential size
+
+            L.circleMarker([q.coordinates[1], q.coordinates[0]], {
+                radius: radius,
+                fillColor: color,
+                color: color,
+                weight: 1,
+                opacity: 0.8,
+                fillOpacity: 0.4
+            })
+            .bindPopup(`
+                <div style="text-align:center">
+                    <b style="color:${color}; font-size:1.2em">M ${q.mag}</b><br>
+                    ${q.place}<br>
+                    <small>${new Date(q.time).toLocaleString()}</small>
+                </div>
+            `)
+            .addTo(markersLayer);
+        }
+
+        // === NEW FEATURE: HISTORY PLAYBACK ===
+        async function playHistory() {
+            if (STATE.isPlaying) return;
+            if (STATE.quakes.length === 0) return;
+
+            STATE.isPlaying = true;
+            const btn = document.getElementById('btnPlay');
+            btn.innerHTML = "<span>⏹</span> Playing...";
+            btn.classList.add('playing');
+            
+            // 1. Clear Map
+            markersLayer.clearLayers();
+
+            // 2. Sort by TIME (Oldest first)
+            const chronological = [...STATE.quakes].sort((a, b) => a.time - b.time);
+
+            // 3. Loop with delay
+            for (let i = 0; i < chronological.length; i++) {
+                const q = chronological[i];
+                
+                addMarkerToMap(q);
+                
+                // Highlight current item in list if visible? (Optional, skipping for performance)
+                
+                // Calculate delay based on list size (faster if many items)
+                const delay = chronological.length > 50 ? 50 : 150;
+                await new Promise(r => setTimeout(r, delay));
+            }
+
+            // 4. Finish
+            STATE.isPlaying = false;
+            btn.innerHTML = "<span>▶</span> Play 24h History";
+            btn.classList.remove('playing');
+        }
+
+        // HELPERS
+        function getMagColor(mag) {
+            if (mag >= 7.0) return '#ff0055'; 
+            if (mag >= 6.0) return '#ff4400';
+            if (mag >= 5.0) return '#ff9900';
+            if (mag >= 4.0) return '#ffcc00';
+            return '#00c851';
+        }
+
+        function toggleSidebar() {
+            const sb = document.getElementById('sidebar');
+            sb.classList.toggle('collapsed');
+            setTimeout(() => map.invalidateSize(), 300);
+        }
+
+        function flyToHighestRisk() {
+            if(STATE.quakes.length > 0) {
+                const bigOne = STATE.quakes[0]; // Already sorted by Mag
+                map.flyTo([bigOne.coordinates[1], bigOne.coordinates[0]], 6);
             }
         }
 
-        // 6. LISTENERS
+        // EVENT LISTENERS
         document.getElementById('magInput').addEventListener('change', (e) => {
             STATE.minMag = e.target.value;
             document.getElementById('magValue').innerText = e.target.value;
             updateData();
         });
 
+        // INIT
         initGeoLocation();
     </script>
 </body>
