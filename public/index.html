@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seismic Risk Monitor</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --panel-color: #2c2c2c;
+            --text-color: #e0e0e0;
+            --accent: #4a90e2;
+            --danger: #ff4444;
+            --warning: #ffbb33;
+            --safe: #00c851;
+        }
+
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; background: var(--bg-color); color: var(--text-color); display: flex; height: 100vh; overflow: hidden; }
+        
+        /* Sidebar */
+        #sidebar { width: 350px; background: var(--panel-color); display: flex; flex-direction: column; border-right: 1px solid #444; box-shadow: 2px 0 10px rgba(0,0,0,0.5); z-index: 1000; }
+        .header { padding: 20px; border-bottom: 1px solid #444; background: #222; }
+        .header h2 { margin: 0; font-size: 1.2rem; display: flex; align-items: center; gap: 10px; }
+        
+        .controls { padding: 15px; background: #333; border-bottom: 1px solid #444; }
+        .control-group { margin-bottom: 10px; }
+        .control-group label { display: block; font-size: 0.8rem; margin-bottom: 5px; color: #aaa; }
+        input[type="range"] { width: 100%; }
+        
+        #list { flex: 1; overflow-y: auto; padding: 10px; }
+        .quake-item { background: #3a3a3a; padding: 10px; margin-bottom: 8px; border-radius: 4px; cursor: pointer; transition: 0.2s; border-left: 4px solid transparent; }
+        .quake-item:hover { background: #444; }
+        .quake-item.risk-High { border-left-color: var(--danger); }
+        .quake-item.risk-Medium { border-left-color: var(--warning); }
+        .quake-item.risk-Low { border-left-color: var(--safe); }
+        
+        .q-header { display: flex; justify-content: space-between; font-weight: bold; }
+        .q-meta { font-size: 0.8rem; color: #aaa; margin-top: 5px; display: flex; justify-content: space-between; }
+        .risk-badge { padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; color: #000; font-weight: bold; }
+
+        /* Map */
+        #map { flex: 1; height: 100%; background: #000; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #2c2c2c; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+
+        /* Loader */
+        .loader { text-align: center; padding: 20px; color: #666; }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <div class="header">
+            <h2>🌋 Seismic Risk AI</h2>
+        </div>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label>Min Magnitude: <span id="magValue">2.5</span></label>
+                <input type="range" id="magInput" min="1" max="9" step="0.1" value="2.5">
+            </div>
+            <div class="control-group">
+                <label>Your Location (Mocked for Demo)</label>
+                <div style="font-size: 0.8rem; color: var(--accent);">
+                    Lat: <span id="uLat">34.05</span>, Lon: <span id="uLon">-118.25</span> (LA)
+                </div>
+            </div>
+            <button onclick="updateData()" style="width: 100%; padding: 8px; background: var(--accent); border: none; color: white; cursor: pointer; border-radius: 4px;">Refresh Data</button>
+        </div>
+
+        <div id="list">
+            <div class="loader">Loading seismic data...</div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // 1. CONFIG & STATE
+        const STATE = {
+            userLat: 50.4501, // Default fallback (Kyiv)
+            userLon: 30.5234,
+            minMag: 2.5,
+            quakes: []
+        };
+
+        // 2. INIT MAP
+        const map = L.map('map').setView([STATE.userLat, STATE.userLon], 5);
+        
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap, © CartoDB',
+            maxZoom: 19
+        }).addTo(map);
+
+        let userMarker = null;
+        let markersLayer = L.layerGroup().addTo(map);
+
+        // 3. GEOLOCATION (New Feature)
+        function initGeoLocation() {
+            const listEl = document.getElementById('list');
+            
+            if (!navigator.geolocation) {
+                alert("Geolocation is not supported by your browser");
+                updateData();
+                return;
+            }
+
+            listEl.innerHTML = '<div class="loader">📍 Locating you...</div>';
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    // Success
+                    STATE.userLat = position.coords.latitude;
+                    STATE.userLon = position.coords.longitude;
+                    
+                    // Update UI info
+                    document.getElementById('uLat').innerText = STATE.userLat.toFixed(4);
+                    document.getElementById('uLon').innerText = STATE.userLon.toFixed(4);
+
+                    // Move Map & Marker
+                    map.setView([STATE.userLat, STATE.userLon], 6);
+                    updateUserMarker();
+                    
+                    // Fetch Data based on NEW location
+                    updateData();
+                },
+                (error) => {
+                    // Error (blocked or timeout)
+                    console.warn("Geo Error:", error);
+                    listEl.innerHTML = '<div class="loader" style="color:orange">Location access denied.<br>Using default.</div>';
+                    updateUserMarker(); // Show default marker
+                    setTimeout(updateData, 1500);
+                }
+            );
+        }
+
+        function updateUserMarker() {
+            if (userMarker) map.removeLayer(userMarker);
+            
+            const userIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: "<div style='background-color:#4a90e2; width: 14px; height: 14px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px #4a90e2;'></div>",
+                iconSize: [14, 14],
+                iconAnchor: [7, 7]
+            });
+            
+            userMarker = L.marker([STATE.userLat, STATE.userLon], {icon: userIcon})
+                .addTo(map)
+                .bindPopup("<b>YOU ARE HERE</b>")
+                .openPopup();
+        }
+
+        // 4. CORE LOGIC
+        async function updateData() {
+            const listEl = document.getElementById('list');
+            listEl.innerHTML = '<div class="loader">Analyzing seismic data...</div>';
+            
+            try {
+                // Fetch from our Node backend
+                // Важливо: відносний шлях працює тільки якщо ти на localhost:3000
+                const response = await fetch(`/api/quakes?lat=${STATE.userLat}&lon=${STATE.userLon}&minMag=${STATE.minMag}`);
+                
+                // Перевірка на "Unexpected token <" (якщо повернувся HTML замість JSON)
+                const contentType = response.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Server returned HTML instead of JSON. Make sure you open http://localhost:3000");
+                }
+
+                const data = await response.json();
+                STATE.quakes = data;
+                
+                render(data);
+            } catch (err) {
+                console.error(err);
+                listEl.innerHTML = `<div style="padding:10px; color:#ff4444; border: 1px solid #444; background: #222;">
+                    <b>Connection Error</b><br>
+                    <small>${err.message}</small><br><br>
+                    👉 <b>Check URL:</b> make sure you are on <u>http://localhost:3000</u>
+                </div>`;
+            }
+        }
+
+        function render(quakes) {
+            markersLayer.clearLayers();
+            const listEl = document.getElementById('list');
+            listEl.innerHTML = '';
+
+            if(quakes.length === 0) {
+                listEl.innerHTML = '<div class="loader">No earthquakes found nearby with > ' + STATE.minMag + ' mag.</div>';
+                return;
+            }
+
+            quakes.forEach(q => {
+                // A. Render List Item
+                const item = document.createElement('div');
+                item.className = `quake-item risk-${q.risk.level}`;
+                
+                const color = getColor(q.risk.level);
+                
+                item.innerHTML = `
+                    <div class="q-header">
+                        <span>M ${q.mag.toFixed(1)}</span>
+                        <span class="risk-badge" style="background:${color}">${q.risk.level.toUpperCase()}</span>
+                    </div>
+                    <div style="font-size: 0.9rem; margin: 4px 0;">${q.place}</div>
+                    <div class="q-meta">
+                        <span>${q.depth} km deep</span>
+                        <span>${q.risk.distance} km away</span>
+                    </div>
+                `;
+                
+                // Click to fly to map
+                item.onclick = () => {
+                    map.flyTo([q.coordinates[1], q.coordinates[0]], 8);
+                    item.style.background = '#555';
+                    setTimeout(() => item.style.background = '', 500);
+                };
+                
+                listEl.appendChild(item);
+
+                // B. Render Map Marker
+                const radius = (q.mag * 2) + 2;
+                
+                L.circleMarker([q.coordinates[1], q.coordinates[0]], {
+                    radius: radius,
+                    fillColor: color,
+                    color: color,
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.6
+                })
+                .bindPopup(`
+                    <b>${q.place}</b><br>
+                    Mag: ${q.mag}<br>
+                    Depth: ${q.depth}km<br>
+                    <hr>
+                    Risk Score: <b>${q.risk.score}/100</b>
+                `)
+                .addTo(markersLayer);
+            });
+        }
+
+        function getColor(level) {
+            switch(level) {
+                case 'High': return '#ff4444';
+                case 'Medium': return '#ffbb33';
+                default: return '#00c851';
+            }
+        }
+
+        // 5. EVENT LISTENERS
+        document.getElementById('magInput').addEventListener('input', (e) => {
+            STATE.minMag = e.target.value;
+            document.getElementById('magValue').innerText = e.target.value;
+        });
+        
+        document.getElementById('magInput').addEventListener('change', updateData);
+
+        // START HERE
+        initGeoLocation();
+
+    </script>
+</body>
+</html>
