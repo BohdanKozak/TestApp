@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seismic Risk AI</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
@@ -30,46 +31,11 @@
         
         .controls { padding: 15px; background: #333; border-bottom: 1px solid #444; }
 
-        /* --- CUSTOM RANGE SLIDER (DARK STYLE) --- */
-        input[type=range] {
-            -webkit-appearance: none; /* Прибираємо стандартний вигляд */
-            width: 100%;
-            background: transparent;
-            margin: 10px 0 15px 0;
-        }
+        /* SLIDER STYLE */
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; margin: 10px 0 15px 0; }
         input[type=range]:focus { outline: none; }
-
-        /* Трек (смужка) */
-        input[type=range]::-webkit-slider-runnable-track {
-            width: 100%;
-            height: 8px;
-            cursor: pointer;
-            background: #111; /* Чорний фон */
-            border-radius: 4px;
-            border: 1px solid #444; /* Тонка рамка */
-        }
-        /* Повзунок (ручка) */
-        input[type=range]::-webkit-slider-thumb {
-            height: 18px;
-            width: 18px;
-            border-radius: 50%;
-            background: var(--accent);
-            cursor: pointer;
-            -webkit-appearance: none;
-            margin-top: -6px; /* Центруємо по вертикалі */
-            box-shadow: 0 0 5px rgba(0,0,0,0.5);
-            border: 2px solid #fff;
-        }
-        /* Firefox підтримка */
-        input[type=range]::-moz-range-track {
-            width: 100%; height: 8px; cursor: pointer;
-            background: #111; border-radius: 4px; border: 1px solid #444;
-        }
-        input[type=range]::-moz-range-thumb {
-            height: 18px; width: 18px; border: 2px solid #fff;
-            border-radius: 50%; background: var(--accent); cursor: pointer;
-        }
-        /* ---------------------------------------- */
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 8px; cursor: pointer; background: #111; border-radius: 4px; border: 1px solid #444; }
+        input[type=range]::-webkit-slider-thumb { height: 18px; width: 18px; border-radius: 50%; background: var(--accent); cursor: pointer; -webkit-appearance: none; margin-top: -6px; box-shadow: 0 0 5px rgba(0,0,0,0.5); border: 2px solid #fff; }
 
         .btn { 
             width: 100%; padding: 10px; border: none; color: white; cursor: pointer; border-radius: 5px; 
@@ -85,30 +51,29 @@
         .btn-play { background: #444; border: 1px solid #666; }
         .btn-play.playing { background: var(--success); color: black; border-color: var(--success); }
 
+        /* Delete Button Style */
+        .btn-delete {
+            background: transparent; border: 1px solid #555; color: #aaa; 
+            padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; margin-top: 5px;
+        }
+        .btn-delete:hover { background: var(--danger); color: white; border-color: var(--danger); }
+
         #list { flex: 1; overflow-y: auto; padding: 10px; }
-        .quake-item { background: #3a3a3a; padding: 10px; margin-bottom: 8px; border-radius: 5px; cursor: pointer; border-left: 5px solid transparent; }
+        .quake-item { background: #3a3a3a; padding: 10px; margin-bottom: 8px; border-radius: 5px; cursor: pointer; border-left: 5px solid transparent; position: relative; }
         .quake-item:hover { background: #444; }
 
         /* MAP & MARKERS */
         #map { flex: 1; background: #0b0b0b; }
-        
-        .user-pin { 
-            width: 16px; height: 16px; background: var(--accent); border-radius: 50%; 
-            box-shadow: 0 0 0 2px white, 0 0 15px var(--accent); animation: pulse 2s infinite; 
-        }
+        .user-pin { width: 16px; height: 16px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 0 2px white, 0 0 15px var(--accent); animation: pulse 2s infinite; }
         @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(2.5); } }
 
-        /* MODAL STYLES */
+        /* MODAL */
         .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 9999; justify-content: center; align-items: center; }
         .modal { background: var(--panel); padding: 25px; border-radius: 8px; width: 320px; border: 1px solid #555; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .modal h3 { margin-top: 0; color: var(--user-event); margin-bottom: 20px; text-align: center; }
-        
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; font-size: 0.85rem; color: #aaa; margin-bottom: 5px; }
-        .form-group input { 
-            width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #444; 
-            color: white; border-radius: 4px; box-sizing: border-box; outline: none; transition: 0.2s;
-        }
+        .form-group input { width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #444; color: white; border-radius: 4px; box-sizing: border-box; outline: none; }
         .form-group input:focus { border-color: var(--accent); }
         .label-danger { color: var(--danger); font-weight: bold; }
         .error-msg { color: var(--danger); font-size: 0.8rem; display: none; margin-top: 5px; }
@@ -125,7 +90,6 @@
         
         <div class="controls hide-on-collapse">
             <label style="font-size:0.8rem; color:#aaa; margin-bottom: 5px; display:block;">Min Mag: <b id="magVal" style="color:var(--accent)">2.5</b></label>
-            
             <input type="range" id="magInput" min="0" max="8" step="0.1" value="2.5">
 
             <button class="btn btn-refresh" onclick="updateData()">🔄 Refresh</button>
@@ -149,28 +113,23 @@
 <div id="addModal" class="modal-overlay">
     <div class="modal">
         <h3>Report New Event</h3>
-        
         <div class="form-group">
             <label>Location</label>
             <input type="text" id="inpCoords" readonly style="color:#777; background: #222; cursor: not-allowed;">
         </div>
-        
         <div class="form-group">
             <label>Magnitude (0 - 10)</label>
             <input type="number" id="inpMag" value="5.0" step="0.1" min="0" max="10" oninput="validateMag(this)">
             <div id="magError" class="error-msg">⚠️ Range must be 0 - 10</div>
         </div>
-        
         <div class="form-group">
             <label>Place Name</label>
             <input type="text" id="inpPlace" placeholder="e.g. Near Tokyo">
         </div>
-
         <div class="form-group">
             <label class="label-danger">💀 Casualties</label>
             <input type="number" id="inpCasualties" value="0" min="0" style="border-color:var(--danger)">
         </div>
-        
         <div style="display:flex; gap:10px; margin-top: 20px;">
             <button id="btnSubmit" class="btn btn-add" onclick="submitEvent()">Submit</button>
             <button class="btn" onclick="closeModal()" style="background:#444">Cancel</button>
@@ -182,7 +141,7 @@
 <script>
     // STATE
     const S = {
-        lat: 50.45, lon: 30.52, // Default
+        lat: 50.45, lon: 30.52, 
         minMag: 2.5,
         quakes: [],
         adding: false,
@@ -203,49 +162,34 @@
         S.lat = pos.coords.latitude;
         S.lon = pos.coords.longitude;
         if(userMarker) map.removeLayer(userMarker);
-        
         const icon = L.divIcon({ className: 'custom', html: '<div class="user-pin"></div>', iconSize:[16,16] });
         userMarker = L.marker([S.lat, S.lon], {icon}).addTo(map).bindPopup("You");
-        
         map.flyTo([S.lat, S.lon], 5);
         updateData();
     }, () => updateData());
 
     // --- CORE LOGIC ---
 
-    // VALIDATION
     function validateMag(input) {
         const val = parseFloat(input.value);
         const err = document.getElementById('magError');
         const btn = document.getElementById('btnSubmit');
-
         if (val < 0 || val > 10 || isNaN(val)) {
-            input.style.borderColor = 'var(--danger)';
-            input.style.color = 'var(--danger)';
-            err.style.display = 'block';
-            btn.disabled = true;
+            input.style.borderColor = 'var(--danger)'; input.style.color = 'var(--danger)';
+            err.style.display = 'block'; btn.disabled = true;
         } else {
-            input.style.borderColor = '#444';
-            input.style.color = 'white';
-            err.style.display = 'none';
-            btn.disabled = false;
+            input.style.borderColor = '#444'; input.style.color = 'white';
+            err.style.display = 'none'; btn.disabled = false;
         }
     }
 
-    // MAP CLICK
     map.on('click', e => {
         if(S.adding) {
             S.tempLatLng = e.latlng;
             document.getElementById('inpCoords').value = `${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
-            
-            // Reset validation state
             const magInput = document.getElementById('inpMag');
-            magInput.value = "5.0";
-            validateMag(magInput); 
-            
+            magInput.value = "5.0"; validateMag(magInput); 
             document.getElementById('addModal').style.display = 'flex';
-            
-            // Reset cursor
             S.adding = false;
             document.getElementById('map').style.cursor = '';
             document.getElementById('addHint').style.display = 'none';
@@ -254,15 +198,27 @@
 
     async function updateData() {
         if(S.playing) return;
-        
         try {
             const res = await fetch(`/api/quakes?lat=${S.lat}&lon=${S.lon}&minMag=${S.minMag}`);
             const data = await res.json();
-            
             S.quakes = data.sort((a,b) => (b.isUserReported ? 1 : 0) - (a.isUserReported ? 1 : 0) || b.mag - a.mag);
-            
             render(S.quakes);
         } catch(e) { console.error(e); }
+    }
+
+    // 🔥 ФУНКЦІЯ ВИДАЛЕННЯ 🔥
+    async function deleteEvent(id, event) {
+        // Зупиняємо спливання події, щоб карта не летіла до маркера при кліку на "видалити"
+        if(event) event.stopPropagation();
+        
+        if(!confirm("Are you sure you want to delete this event?")) return;
+
+        try {
+            await fetch(`/api/quakes/${id}`, { method: 'DELETE' });
+            updateData(); // Оновлюємо список
+        } catch(e) {
+            alert("Error deleting event");
+        }
     }
 
     function render(list) {
@@ -277,6 +233,18 @@
             const color = isUser ? '#a333ff' : getCol(q.mag);
             const radius = Math.pow(q.mag, 2)/1.8 + 3;
 
+            // Кнопка видалення (ТІЛЬКИ ДЛЯ ЮЗЕРІВ)
+            const deleteBtn = isUser 
+                ? `<div style="text-align:right; margin-top:5px;">
+                    <button class="btn-delete" onclick="deleteEvent('${q.usgsId}', event)">🗑️ Delete</button>
+                   </div>` 
+                : '';
+            
+            // Кнопка видалення в попапі
+            const popupDelete = isUser
+                ? `<hr style="border-color:#444"><button class="btn-delete" style="width:100%" onclick="deleteEvent('${q.usgsId}')">🗑️ Delete Event</button>`
+                : '';
+
             // LIST ITEM
             const item = document.createElement('div');
             item.className = 'quake-item';
@@ -290,6 +258,7 @@
                 <div style="font-size:0.8em; color:#aaa">
                     Depth: ${q.depth}km ${q.casualties > 0 ? `| <b style="color:var(--danger)">💀 ${q.casualties}</b>` : ''}
                 </div>
+                ${deleteBtn}
             `;
             item.onclick = () => map.flyTo([q.coordinates[1], q.coordinates[0]], 8);
             elList.appendChild(item);
@@ -302,12 +271,11 @@
                     <b style="color:${color}; font-size:1.2em">M ${parseFloat(q.mag).toFixed(1)}</b><br>${q.place}<br>
                     ${q.casualties > 0 ? `<b style="color:red">💀 ${q.casualties} Victims</b><br>` : ''}
                     <small>${new Date(q.time).toLocaleString()}</small>
+                    ${popupDelete}
                 </div>
             `).addTo(layer);
         });
     }
-
-    // --- FEATURES ---
 
     async function playHistory() {
         if(S.playing) return;
@@ -326,33 +294,26 @@
             await new Promise(r => setTimeout(r, 100));
         }
         
-        S.playing = false;
-        btn.innerHTML = "▶ Play 24h History"; btn.classList.remove('playing');
+        S.playing = false; btn.innerHTML = "▶ Play 24h History"; btn.classList.remove('playing');
         render(S.quakes); 
     }
 
     function enableAddMode() {
-        S.adding = true;
-        document.getElementById('map').style.cursor = 'crosshair';
+        S.adding = true; document.getElementById('map').style.cursor = 'crosshair';
         document.getElementById('addHint').style.display = 'block';
     }
 
     async function submitEvent() {
         const magVal = parseFloat(document.getElementById('inpMag').value);
-        if (magVal < 0 || magVal > 10 || isNaN(magVal)) {
-            alert("❌ Invalid Magnitude!"); return;
-        }
+        if (magVal < 0 || magVal > 10 || isNaN(magVal)) { alert("❌ Invalid Magnitude!"); return; }
 
         const payload = {
-            lat: S.tempLatLng.lat, lng: S.tempLatLng.lng,
-            mag: magVal,
+            lat: S.tempLatLng.lat, lng: S.tempLatLng.lng, mag: magVal,
             place: document.getElementById('inpPlace').value || "Unknown Location",
-            casualties: document.getElementById('inpCasualties').value,
-            depth: 10
+            casualties: document.getElementById('inpCasualties').value, depth: 10
         };
         await fetch('/api/quakes', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-        closeModal();
-        updateData();
+        closeModal(); updateData();
     }
 
     function flyHighRisk() {
@@ -365,9 +326,7 @@
     function getCol(m) { return m>=7?'#ff0055' : m>=6?'#ff4400' : m>=5?'#ff9900' : '#00c851'; }
 
     document.getElementById('magInput').addEventListener('change', e => {
-        S.minMag = e.target.value;
-        document.getElementById('magVal').innerText = S.minMag;
-        updateData();
+        S.minMag = e.target.value; document.getElementById('magVal').innerText = S.minMag; updateData();
     });
 
 </script>

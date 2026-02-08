@@ -10,7 +10,7 @@ app.use(express.json());
 app.use(cors());
 app.use(express.static('public'));
 
-// --- DB CONNECTION (Optional) ---
+// --- DB CONNECTION ---
 mongoose.connect('mongodb://localhost:27017/seismic_risk_final')
     .then(() => console.log('✅ MongoDB Connected'))
     .catch(() => console.log('⚠️ Running in Memory Mode (No DB)'));
@@ -22,34 +22,30 @@ const QuakeSchema = new mongoose.Schema({
     place: String,
     time: Number,
     depth: Number,
-    coordinates: [Number], // [lon, lat]
+    coordinates: [Number],
     casualties: { type: Number, default: 0 },
     isUserReported: { type: Boolean, default: false }
 });
 const Quake = mongoose.model('Quake', QuakeSchema);
 
-// Fallback storage
 let memoryQuakes = [];
 
 // --- API ---
 
-// GET: Отримати всі події
 app.get('/api/quakes', async (req, res) => {
     const { lat, lon, minMag } = req.query;
     const minM = parseFloat(minMag) || 0;
     
     let quakes = [];
 
-    // 1. Fetch Local/DB Data
     if (mongoose.connection.readyState === 1) {
         quakes = await Quake.find({ mag: { $gte: minM } }).lean();
     } else {
-        // Fetch Live USGS + Memory
         const usgs = await fetchUSGSData();
+        // Об'єднуємо і фільтруємо
         quakes = [...memoryQuakes, ...usgs].filter(q => q.mag >= minM);
     }
 
-    // 2. Calculate Risk
     const analyzed = quakes.map(q => ({
         ...q,
         risk: calculateRisk(q, parseFloat(lat), parseFloat(lon))
@@ -58,13 +54,12 @@ app.get('/api/quakes', async (req, res) => {
     res.json(analyzed);
 });
 
-// POST: Додати подію
 app.post('/api/quakes', async (req, res) => {
     try {
         const { mag, place, depth, lat, lng, casualties } = req.body;
         
         const newQuake = {
-            usgsId: 'user_' + Date.now(),
+            usgsId: 'user_' + Date.now(), // Унікальний ID
             mag: parseFloat(mag),
             place: place || "User Reported Event",
             time: Date.now(),
@@ -80,7 +75,22 @@ app.post('/api/quakes', async (req, res) => {
             memoryQuakes.push(newQuake);
         }
         
-        console.log("📝 Added:", newQuake.place);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 🔥 НОВИЙ РОУТ ДЛЯ ВИДАЛЕННЯ 🔥
+app.delete('/api/quakes/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        if (mongoose.connection.readyState === 1) {
+            await Quake.deleteOne({ usgsId: id });
+        } else {
+            memoryQuakes = memoryQuakes.filter(q => q.usgsId !== id);
+        }
+        console.log("🗑️ Deleted event:", id);
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ error: e.message });
