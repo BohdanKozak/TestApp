@@ -13,7 +13,7 @@ graph TD
         Cron("🕒 Cron Scheduler<br/>(node-cron)"):::server
         IngestLogic("⚙️ Data Ingestion Logic<br/>(Fetch, Clean, Transform)"):::server
         ExpressAPI("🚀 Express Server<br/>(REST API Endpoints)"):::server
-    </td>
+    end
 
     %% База даних
     MongoDB[("(DB) MongoDB<br/>(Geospatial Data)")]:::db
@@ -24,16 +24,13 @@ graph TD
     end
 
     %% Потоки даних (Data Flows)
-
-    %% 1. Процес збору даних (Data Ingestion Flow)
-    Cron -- "1. Triggers job (periodically)" --> IngestLogic
-    IngestLogic -- "2. HTTP GET Request" --> USGS
-    USGS -. "3. Raw JSON Data" .-> IngestLogic
+    Cron -- "1. Triggers job" --> IngestLogic
+    IngestLogic -- "2. HTTP GET" --> USGS
+    USGS -. "3. Raw JSON" .-> IngestLogic
     IngestLogic -- "4. Save Processed Data" --> MongoDB
 
-    %% 2. Процес обслуговування клієнта (Client Serving Flow)
     VanillaJS -- "A. HTTP GET /api/earthquakes" --> ExpressAPI
-    ExpressAPI -- "B. Mongoose Query" --> MongoDB
+    ExpressAPI -- "B. DB Query" --> MongoDB
     MongoDB -. "C. Query Results" .-> ExpressAPI
     ExpressAPI -. "D. JSON Response" .-> VanillaJS
     VanillaJS -- "E. Render Data" --> Leaflet
